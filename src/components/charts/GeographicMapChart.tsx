@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { DEMO_COUNTRIES } from '../../data/demoData';
 import { RiskBadge } from '../common/RiskBadge';
 import { Globe2, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -9,8 +8,19 @@ interface GeoDataPoint {
   name: string;
   region: string;
   coverage: number;
-  incomeGroup: string;
+  incomeGroup?: string;
   population?: number;
+}
+
+export interface GeographicMapChartProps {
+  countryData?: {
+    country: string;
+    code: string;
+    coverage: number;
+    region: string;
+    incomeGroup?: string;
+    population?: number;
+  }[];
 }
 
 const COUNTRY_SAMPLE_DATA: GeoDataPoint[] = [
@@ -36,23 +46,33 @@ const COUNTRY_SAMPLE_DATA: GeoDataPoint[] = [
   { code: 'COL', name: 'Colombia', region: 'AMRO', coverage: 88.9, incomeGroup: 'Upper middle income', population: 51874024 }
 ];
 
-export const GeographicMapChart: React.FC = () => {
+export const GeographicMapChart: React.FC<GeographicMapChartProps> = ({ countryData }) => {
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
   const navigate = useNavigate();
 
+  const activeData: GeoDataPoint[] = countryData && countryData.length > 0
+    ? countryData.map((c) => ({
+        code: c.code,
+        name: c.country || (c as any).name || c.code,
+        region: c.region || 'Global',
+        coverage: c.coverage,
+        incomeGroup: c.incomeGroup || '—',
+        population: c.population,
+      }))
+    : COUNTRY_SAMPLE_DATA;
+
+  const distinctRegions = Array.from(new Set(activeData.map((d) => d.region)))
+    .filter(Boolean)
+    .sort();
+
   const regions = [
     { id: 'ALL', label: 'All Regions' },
-    { id: 'AFRO', label: 'Africa (AFRO)' },
-    { id: 'AMRO', label: 'Americas (AMRO)' },
-    { id: 'EMRO', label: 'Eastern Med (EMRO)' },
-    { id: 'EURO', label: 'Europe (EURO)' },
-    { id: 'SEARO', label: 'SE Asia (SEARO)' },
-    { id: 'WPRO', label: 'W Pacific (WPRO)' }
+    ...distinctRegions.map((r) => ({ id: r, label: r })),
   ];
 
   const filteredCountries = selectedRegion === 'ALL'
-    ? COUNTRY_SAMPLE_DATA
-    : COUNTRY_SAMPLE_DATA.filter(c => c.region === selectedRegion);
+    ? activeData
+    : activeData.filter((c) => c.region === selectedRegion);
 
   const getCoverageBarColor = (cov: number) => {
     if (cov >= 90) return 'bg-[#0d7a68]';
@@ -96,7 +116,7 @@ export const GeographicMapChart: React.FC = () => {
           return (
             <div
               key={country.code}
-              onClick={() => navigate(`/countries?code=${country.code}`)}
+              onClick={() => navigate(`/countries?code=${encodeURIComponent(country.code)}`)}
               className="p-3.5 rounded-xl border border-[#e1efe9] bg-white hover:border-[#a3e9d4] hover:shadow-card-hover transition-all cursor-pointer relative overflow-hidden group"
             >
               <div className="flex items-center justify-between gap-2">

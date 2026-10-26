@@ -16,7 +16,7 @@ interface ModelMetricsChartProps {
   height?: number;
 }
 
-type MetricKey = 'rmse' | 'mae' | 'mape' | 'smape' | 'r2';
+type MetricKey = 'rmse' | 'mae' | 'mape' | 'smape' | 'r2' | 'accuracy' | 'within5pp';
 
 export const ModelMetricsChart: React.FC<ModelMetricsChartProps> = ({ metrics, height = 320 }) => {
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>('rmse');
@@ -51,10 +51,28 @@ export const ModelMetricsChart: React.FC<ModelMetricsChartProps> = ({ metrics, h
       unit: '',
       description: 'Proportion of coverage variance explained. Closer to 1.0 is better.',
       lowerIsBetter: false
+    },
+    accuracy: {
+      label: 'Overall Accuracy',
+      unit: '%',
+      description: 'Model predictive accuracy across evaluation sets. Closer to 100% is better.',
+      lowerIsBetter: false
+    },
+    within5pp: {
+      label: 'Within ±5 percentage points',
+      unit: '%',
+      description: 'Percentage of test points predicted within ±5 percentage points. Higher is better.',
+      lowerIsBetter: false
     }
   };
 
-  const currentConfig = metricConfigs[selectedMetric];
+  const availableKeys = (Object.keys(metricConfigs) as MetricKey[]).filter(k => {
+    if (k === 'accuracy') return metrics.some(m => m.accuracy !== undefined);
+    if (k === 'within5pp') return metrics.some(m => m.within5pp !== undefined);
+    return true;
+  });
+
+  const currentConfig = metricConfigs[selectedMetric] || metricConfigs.rmse;
 
   const values = metrics.map(m => m[selectedMetric]).filter(v => typeof v === 'number');
   const bestValue = currentConfig.lowerIsBetter ? Math.min(...values) : Math.max(...values);
@@ -76,7 +94,7 @@ export const ModelMetricsChart: React.FC<ModelMetricsChartProps> = ({ metrics, h
         </p>
 
         <div className="flex flex-wrap items-center gap-1 bg-[#f0faf7] p-1 rounded-xl border border-[#d8ebe4]">
-          {(Object.keys(metricConfigs) as MetricKey[]).map(key => (
+          {availableKeys.map(key => (
             <button
               key={key}
               onClick={() => setSelectedMetric(key)}

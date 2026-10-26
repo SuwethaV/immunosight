@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { DEMO_COUNTRIES, DEMO_VACCINES } from '../data/demoData';
 import { apiService } from '../services/api';
-import { CountryMetadata } from '../types';
+import { CountryMetadata, VaccineMetadata } from '../types';
 import { RiskBadge, TrendBadge } from '../components/common/RiskBadge';
 import { MetricCard } from '../components/common/MetricCard';
+import { useMetadata } from '../context/MetadataContext';
 import {
   ResponsiveContainer,
   LineChart,
@@ -28,47 +29,61 @@ import {
   ReferenceLine
 } from 'recharts';
 
-export const CountryAnalysisPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialCode = searchParams.get('code') || 'IND';
+const FALLBACK_PALETTE = ['#0d7a68', '#14b8a6', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f97316', '#06b6d4', '#6366f1'];
 
-  const [countries, setCountries] = useState<CountryMetadata[]>(DEMO_COUNTRIES);
-  const [selectedCountryCode, setSelectedCountryCode] = useState<string>(initialCode);
+export const CountryAnalysisPage: React.FC = () => {
+  const { countries, vaccines, defaultCountry } = useMetadata();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlCode = searchParams.get('code');
+
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>(urlCode || defaultCountry || 'India');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVaccines, setSelectedVaccines] = useState<string[]>(['DTP3', 'MCV1', 'BCG', 'Pol3']);
   const [startYear, setStartYear] = useState<number>(2005);
   const [endYear, setEndYear] = useState<number>(2023);
 
+  // Initialize selectedVaccines with the 4 default vaccines matching DTP3, MCV1, BCG, Pol3
   useEffect(() => {
-    const loadMetadata = async () => {
-      try {
-        const meta = await apiService.getMetadata();
-        if (meta.countries?.length) {
-          setCountries(meta.countries);
-        }
-      } catch (err) {
-        console.error(err);
+    if (vaccines && vaccines.length > 0) {
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const targets = ['dtp3', 'mcv1', 'bcg', 'pol3'];
+      const matched: string[] = [];
+      targets.forEach(t => {
+        const v = vaccines.find(vItem => normalize(vItem.code).includes(t) || normalize(vItem.name).includes(t));
+        if (v && !matched.includes(v.code)) matched.push(v.code);
+      });
+      if (matched.length < 4) {
+        vaccines.forEach(v => {
+          if (!matched.includes(v.code) && matched.length < 4) matched.push(v.code);
+        });
       }
-    };
-    loadMetadata();
-  }, []);
+      if (matched.length > 0) {
+        setSelectedVaccines(matched);
+      }
+    }
+  }, [vaccines]);
 
   // Sync url param
   useEffect(() => {
     const code = searchParams.get('code');
     if (code && code !== selectedCountryCode) {
       setSelectedCountryCode(code);
+    } else if (!code && defaultCountry) {
+      setSelectedCountryCode(defaultCountry);
     }
-  }, [searchParams]);
+  }, [searchParams, defaultCountry]);
 
   const handleCountryChange = (code: string) => {
     setSelectedCountryCode(code);
     setSearchParams({ code });
   };
 
-  const selectedCountry = useMemo(() => {
-    return countries.find(c => c.code === selectedCountryCode) || countries[0];
-  }, [countries, selectedCountryCode]);
+  const selectedCountry: CountryMetadata = useMemo(() => {
+    return countries.find(c => c.code.toLowerCase() === selectedCountryCode.toLowerCase() || c.name.toLowerCase() === selectedCountryCode.toLowerCase()) 
+      || countries.find(c => c.code.toLowerCase() === defaultCountry.toLowerCase() || c.name.toLowerCase() === defaultCountry.toLowerCase())
+      || countries[0] 
+      || DEMO_COUNTRIES[0];
+  }, [countries, selectedCountryCode, defaultCountry]);
 
   const filteredCountryList = useMemo(() => {
     if (!searchTerm) return countries;
@@ -79,14 +94,39 @@ export const CountryAnalysisPage: React.FC = () => {
     );
   }, [countries, searchTerm]);
 
-  // Generate multi-vaccine historical series for selected country
+  const [historyData, setHistoryData] = useState<{
+    series: { year: number; [key: string]: number }[];
+    latestComparison: { code: string; name: string; coverage: number; whoTarget: number }[];
+  }>({ series: [], latestComparison: [] });
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHistory = async () => {
+      if (!selectedCountryCode || selectedVaccines.length === 0) return;
+      try {
+        const res = await apiService.getCountryHistory(selectedCountry.code, selectedVaccines, startYear, endYear);
+        if (isMounted && res.series.length > 0) {
+          setHistoryData(res);
+        }
+      } catch (err) {
+        console.warn('[CountryAnalysisPage] Failed to fetch country history', err);
+      }
+    };
+    fetchHistory();
+    return () => { isMounted = false; };
+  }, [selectedCountry.code, selectedVaccines, startYear, endYear]);
+
+  // Fallback synthetic series if backend series is completely empty
   const multiVaccineData = useMemo(() => {
+    if (historyData.series && historyData.series.length > 0) {
+      return historyData.series;
+    }
+
     const years: number[] = [];
     for (let y = startYear; y <= endYear; y++) years.push(y);
 
     return years.map(year => {
       const point: { year: number; [key: string]: number } = { year };
-      
       selectedVaccines.forEach(vCode => {
         let seed = 0;
         for (let i = 0; i < selectedCountry.code.length; i++) seed += selectedCountry.code.charCodeAt(i);
@@ -101,25 +141,35 @@ export const CountryAnalysisPage: React.FC = () => {
         if (cov < 25) cov = 25;
         point[vCode] = Math.round(cov * 10) / 10;
       });
-
       return point;
     });
-  }, [selectedCountry, selectedVaccines, startYear, endYear]);
+  }, [historyData.series, selectedCountry, selectedVaccines, startYear, endYear]);
 
-  // Calculate summary metrics for current country
-  const latestDtp3 = multiVaccineData[multiVaccineData.length - 1]?.['DTP3'] ?? 75;
-  const prevDtp3 = multiVaccineData[multiVaccineData.length - 2]?.['DTP3'] ?? latestDtp3;
-  const yoyChange = Math.round((latestDtp3 - prevDtp3) * 10) / 10;
+  // Calculate summary metrics for current country, guarding against missing DTP3
+  const anchorVaccine = selectedVaccines.find(v => /dtp3/i.test(v)) || selectedVaccines[0] || 'DTP3';
+  const lastRow = multiVaccineData[multiVaccineData.length - 1];
+  const prevRow = multiVaccineData[multiVaccineData.length - 2];
+  const latestAnchorCoverage = (lastRow && typeof lastRow[anchorVaccine] === 'number')
+    ? lastRow[anchorVaccine]
+    : 75;
+  const prevAnchorCoverage = (prevRow && typeof prevRow[anchorVaccine] === 'number')
+    ? prevRow[anchorVaccine]
+    : latestAnchorCoverage;
+  const yoyChange = Math.round((latestAnchorCoverage - prevAnchorCoverage) * 10) / 10;
 
   let trendClass = 'Stagnant';
-  if (latestDtp3 >= 90) trendClass = 'Target Reached';
+  if (latestAnchorCoverage >= 90) trendClass = 'Target Reached';
   else if (yoyChange >= 2.0) trendClass = 'Accelerating';
   else if (yoyChange <= -1.0) trendClass = 'Declining';
 
-  const riskLevel = latestDtp3 >= 90 ? 'TARGET_ACHIEVED' : latestDtp3 >= 70 ? 'MEDIUM' : 'HIGH';
+  const riskLevel = latestAnchorCoverage >= 90 ? 'TARGET_ACHIEVED' : latestAnchorCoverage >= 70 ? 'MEDIUM' : 'HIGH';
 
   const latestVaccineComparison = useMemo(() => {
-    return DEMO_VACCINES.map(v => {
+    if (historyData.latestComparison && historyData.latestComparison.length > 0) {
+      return historyData.latestComparison;
+    }
+    const pool = vaccines && vaccines.length > 0 ? vaccines : DEMO_VACCINES;
+    return pool.map(v => {
       let seed = 0;
       for (let i = 0; i < selectedCountry.code.length; i++) seed += selectedCountry.code.charCodeAt(i);
       for (let i = 0; i < v.code.length; i++) seed += v.code.charCodeAt(i);
@@ -132,15 +182,24 @@ export const CountryAnalysisPage: React.FC = () => {
         whoTarget: v.whoTarget
       };
     }).sort((a, b) => b.coverage - a.coverage);
-  }, [selectedCountry]);
+  }, [historyData.latestComparison, selectedCountry, vaccines]);
 
-  const vaccineColors: Record<string, string> = {
-    DTP3: '#0d7a68',
-    MCV1: '#14b8a6',
-    BCG: '#f59e0b',
-    Pol3: '#8b5cf6',
-    HepB3: '#ec4899',
+  const getVaccineColor = (vCode: string, idx: number = 0) => {
+    const vaccineColors: Record<string, string> = {
+      DTP3: '#0d7a68',
+      MCV1: '#14b8a6',
+      BCG: '#f59e0b',
+      Pol3: '#8b5cf6',
+      HepB3: '#ec4899',
+    };
+    if (vaccineColors[vCode]) return vaccineColors[vCode];
+    return FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
   };
+
+  const availableVaccineOptions = useMemo(() => {
+    const list = vaccines.length > 0 ? vaccines.map(v => v.code) : ['DTP3', 'MCV1', 'BCG', 'Pol3', 'HepB3'];
+    return Array.from(new Set([...list, ...selectedVaccines]));
+  }, [vaccines, selectedVaccines]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -153,7 +212,7 @@ export const CountryAnalysisPage: React.FC = () => {
               <span>National Immunization Profile: {selectedCountry.name}</span>
             </h2>
             <p className="text-xs text-slate-500 font-medium">
-              {selectedCountry.region} • {selectedCountry.incomeGroup} • ISO: <span className="font-mono text-[#0d7a68] font-bold">{selectedCountry.code}</span>
+              {selectedCountry.region} • {selectedCountry.incomeGroup || '—'} • ISO: <span className="font-mono text-[#0d7a68] font-bold">{selectedCountry.code}</span>
             </p>
           </div>
 
@@ -173,7 +232,7 @@ export const CountryAnalysisPage: React.FC = () => {
             <select
               value={selectedCountryCode}
               onChange={e => handleCountryChange(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              className="px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[200px] truncate"
             >
               {filteredCountryList.map(c => (
                 <option key={c.code} value={c.code}>
@@ -213,7 +272,7 @@ export const CountryAnalysisPage: React.FC = () => {
           {/* Toggleable Vaccine Series */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-slate-500 font-semibold mr-1">Series:</span>
-            {['DTP3', 'MCV1', 'BCG', 'Pol3', 'HepB3'].map(vCode => {
+            {availableVaccineOptions.slice(0, 8).map(vCode => {
               const active = selectedVaccines.includes(vCode);
               return (
                 <button
@@ -244,8 +303,8 @@ export const CountryAnalysisPage: React.FC = () => {
       {/* KPI Cards for Selected Country */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="LATEST DTP3 COVERAGE"
-          value={`${latestDtp3}%`}
+          title={`LATEST ${anchorVaccine} COVERAGE`}
+          value={`${latestAnchorCoverage}%`}
           subtitle="Primary routine anchor dose"
           trend={{ value: `${yoyChange > 0 ? `+${yoyChange}` : yoyChange}%`, label: 'YoY', positiveIsGood: true }}
           badge={<RiskBadge level={riskLevel} size="sm" />}
@@ -260,19 +319,19 @@ export const CountryAnalysisPage: React.FC = () => {
 
         <MetricCard
           title="DATA COMPLETENESS"
-          value={`${selectedCountry.dataCompleteness}%`}
+          value={selectedCountry.dataCompleteness !== undefined ? `${selectedCountry.dataCompleteness}%` : '—'}
           subtitle="Annual reporting fidelity"
           badge={
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#ccfbf1] text-[#0d7a68] font-bold">
-              High Quality
+              {selectedCountry.dataCompleteness !== undefined ? 'High Quality' : 'Standard'}
             </span>
           }
         />
 
         <MetricCard
           title="MISSING SURVEY YEARS"
-          value={selectedCountry.missingYearsCount}
-          unit="Years"
+          value={selectedCountry.missingYearsCount !== undefined ? selectedCountry.missingYearsCount : '—'}
+          unit={selectedCountry.missingYearsCount !== undefined ? "Years" : undefined}
           subtitle="Interpolated via TFT"
         />
       </div>
@@ -318,15 +377,15 @@ export const CountryAnalysisPage: React.FC = () => {
               <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
               <ReferenceLine y={90} stroke="#0d7a68" strokeDasharray="4 4" label={{ value: 'WHO Target 90%', fill: '#0d7a68', fontSize: 10, position: 'insideTopLeft' }} />
               
-              {selectedVaccines.map(vCode => (
+              {selectedVaccines.map((vCode, idx) => (
                 <Line
                   key={vCode}
                   type="monotone"
                   dataKey={vCode}
                   name={vCode}
-                  stroke={vaccineColors[vCode] || '#0d7a68'}
+                  stroke={getVaccineColor(vCode, idx)}
                   strokeWidth={2.5}
-                  dot={{ r: 3, fill: vaccineColors[vCode] || '#0d7a68' }}
+                  dot={{ r: 3, fill: getVaccineColor(vCode, idx) }}
                   activeDot={{ r: 6 }}
                 />
               ))}

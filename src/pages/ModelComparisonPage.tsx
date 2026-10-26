@@ -153,6 +153,20 @@ export const ModelComparisonPage: React.FC = () => {
                     R² ↑ <ArrowUpDown className="w-3 h-3" />
                   </span>
                 </th>
+                {metrics.some(m => m.accuracy !== undefined) && (
+                  <th className="py-3 px-3 cursor-pointer hover:text-slate-800" onClick={() => handleSort('accuracy')}>
+                    <span className="flex items-center gap-1">
+                      Accuracy (%) ↑ <ArrowUpDown className="w-3 h-3" />
+                    </span>
+                  </th>
+                )}
+                {metrics.some(m => m.within5pp !== undefined) && (
+                  <th className="py-3 px-3 cursor-pointer hover:text-slate-800" onClick={() => handleSort('within5pp')}>
+                    <span className="flex items-center gap-1">
+                      Within ±5pp (%) ↑ <ArrowUpDown className="w-3 h-3" />
+                    </span>
+                  </th>
+                )}
                 <th className="py-3 px-3 font-sans">Capability Features</th>
               </tr>
             </thead>
@@ -210,6 +224,18 @@ export const ModelComparisonPage: React.FC = () => {
                         {m.r2} {isBestR2 && '★'}
                       </span>
                     </td>
+
+                    {metrics.some(x => x.accuracy !== undefined) && (
+                      <td className="py-3 px-3 font-bold text-slate-800">
+                        {m.accuracy !== undefined ? `${m.accuracy}%` : '—'}
+                      </td>
+                    )}
+
+                    {metrics.some(x => x.within5pp !== undefined) && (
+                      <td className="py-3 px-3 font-bold text-slate-800">
+                        {m.within5pp !== undefined ? `${m.within5pp}%` : '—'}
+                      </td>
+                    )}
 
                     <td className="py-3 px-3 font-sans text-[11px]">
                       <div className="flex items-center gap-2">

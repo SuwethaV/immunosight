@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { useMetadata } from '../../context/MetadataContext';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const { defaultCountry, defaultVaccine } = useMetadata();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState('IND');
-  const [selectedVaccine, setSelectedVaccine] = useState('MCV1');
+  const [selectedCountry, setSelectedCountry] = useState(defaultCountry || 'India');
+  const [selectedVaccine, setSelectedVaccine] = useState(defaultVaccine || 'MCV1');
+
+  useEffect(() => {
+    if (defaultCountry) setSelectedCountry(defaultCountry);
+  }, [defaultCountry]);
+
+  useEffect(() => {
+    if (defaultVaccine) setSelectedVaccine(defaultVaccine);
+  }, [defaultVaccine]);
 
   return (
     <div className="min-h-screen bg-[#f0faf7] text-slate-800 flex antialiased">

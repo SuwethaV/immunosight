@@ -12,10 +12,10 @@ export interface CountryMetadata {
   code: string;
   name: string;
   region: string;
-  incomeGroup: 'Low income' | 'Lower middle income' | 'Upper middle income' | 'High income';
+  incomeGroup?: 'Low income' | 'Lower middle income' | 'Upper middle income' | 'High income' | string;
   population?: number;
-  dataCompleteness: number; // percentage 0-100
-  missingYearsCount: number;
+  dataCompleteness?: number; // percentage 0-100
+  missingYearsCount?: number;
 }
 
 export interface VaccineMetadata {
@@ -92,6 +92,8 @@ export interface ModelMetric {
   supportsIntervals: boolean;
   supportsInterpretability: boolean;
   notes: string;
+  accuracy?: number;
+  within5pp?: number;
   isBest?: {
     rmse?: boolean;
     mae?: boolean;
@@ -163,12 +165,17 @@ export interface GlobalDashboardSummary {
   forecastHorizonRange: string;
   highRiskCountriesCount: number;
   targetAchievedCountriesCount: number;
-  globalTrend: { year: number; globalAverage: number; lowIncome: number; highIncome: number }[];
+  globalTrend: { year: number; globalAverage: number; lowIncome?: number; highIncome?: number }[];
   topCoverageCountries: { country: string; code: string; coverage: number; region: string }[];
   lowestCoverageCountries: { country: string; code: string; coverage: number; region: string }[];
-  regionalBreakdown: { region: string; coverage: number; countries: number; trend: TrendDirection }[];
+  regionalBreakdown: { region: string; coverage: number; countries?: number; trend?: TrendDirection }[];
   vaccineOverview: { code: string; name: string; globalCoverage: number; target: number }[];
   isDemo: boolean;
+  forecastTrend?: ForecastPoint[];
+  forecast2030?: number;
+  forecast2030Change?: number;
+  bestVaccine?: { code: string; coverage: number };
+  countryCoverage?: { country: string; code: string; coverage: number; region: string }[];
 }
 
 export interface BackendHealthResponse {
@@ -177,5 +184,19 @@ export interface BackendHealthResponse {
   version?: string;
   modelsLoaded?: string[];
   timestamp?: string;
+}
+
+export interface CountryHistoryResponse {
+  series: { year: number; [vaccineCode: string]: number }[];
+  latestComparison: { code: string; name: string; coverage: number; whoTarget: number }[];
+}
+
+export interface VaccineCoverageItem {
+  code: string;
+  name: string;
+  region: string;
+  coverage: number;
+  incomeGroup?: string;
+  meetsTarget?: boolean;
 }
 

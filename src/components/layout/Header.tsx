@@ -24,7 +24,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
     },
     '/forecast': {
       title: 'TFT Multi-Horizon Coverage Forecasting',
-      subtitle: 'Multi-horizon quantile predictions with uncertainty bounds',
+      subtitle: 'Multi-horizon forecasts with backtest-calibrated prediction intervals',
     },
     '/models': {
       title: 'Benchmark Model Comparison',

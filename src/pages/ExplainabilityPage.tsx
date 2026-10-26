@@ -5,9 +5,10 @@ import {
   Clock, 
   Network
 } from 'lucide-react';
-import { DEMO_COUNTRIES, DEMO_VACCINES, DEMO_EXPLAINABILITY_DATA } from '../data/demoData';
+import { DEMO_EXPLAINABILITY_DATA } from '../data/demoData';
 import { apiService } from '../services/api';
 import { ExplainabilityData, FeatureImportanceItem, TemporalAttentionItem } from '../types';
+import { useMetadata } from '../context/MetadataContext';
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,13 +21,27 @@ import {
 } from 'recharts';
 
 export const ExplainabilityPage: React.FC = () => {
-  const [selectedCountry, setSelectedCountry] = useState<string>('IND');
-  const [selectedVaccine, setSelectedVaccine] = useState<string>('MCV1');
+  const { countries, vaccines, defaultCountry, defaultVaccine } = useMetadata();
+  const [selectedCountry, setSelectedCountry] = useState<string>(defaultCountry || 'India');
+  const [selectedVaccine, setSelectedVaccine] = useState<string>(defaultVaccine || 'MCV1');
   const [explainData, setExplainData] = useState<ExplainabilityData | null>(DEMO_EXPLAINABILITY_DATA);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   useEffect(() => {
+    if (defaultCountry && (!selectedCountry || selectedCountry === 'IND')) {
+      setSelectedCountry(defaultCountry);
+    }
+  }, [defaultCountry]);
+
+  useEffect(() => {
+    if (defaultVaccine && (!selectedVaccine || selectedVaccine === 'MCV1')) {
+      setSelectedVaccine(defaultVaccine);
+    }
+  }, [defaultVaccine]);
+
+  useEffect(() => {
     const fetchExplainability = async () => {
+      if (!selectedCountry || !selectedVaccine) return;
       try {
         const res = await apiService.getExplainability({
           country: selectedCountry,
@@ -76,9 +91,9 @@ export const ExplainabilityPage: React.FC = () => {
             <select
               value={selectedCountry}
               onChange={e => setSelectedCountry(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[160px] truncate"
             >
-              {DEMO_COUNTRIES.map(c => (
+              {countries.map(c => (
                 <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
               ))}
             </select>
@@ -89,9 +104,9 @@ export const ExplainabilityPage: React.FC = () => {
             <select
               value={selectedVaccine}
               onChange={e => setSelectedVaccine(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[160px] truncate"
             >
-              {DEMO_VACCINES.map(v => (
+              {vaccines.map(v => (
                 <option key={v.code} value={v.code}>{v.code}</option>
               ))}
             </select>

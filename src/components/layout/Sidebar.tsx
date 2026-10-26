@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
-import { DEMO_COUNTRIES, DEMO_VACCINES } from '../../data/demoData';
+import { useMetadata } from '../../context/MetadataContext';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -15,13 +15,17 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ 
   collapsed, 
   onToggle,
-  selectedCountry = 'IND',
-  selectedVaccine = 'MCV1',
+  selectedCountry,
+  selectedVaccine,
   onCountryChange,
   onVaccineChange
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { countries, vaccines, defaultCountry, defaultVaccine } = useMetadata();
+
+  const currentCountry = selectedCountry || defaultCountry;
+  const currentVaccine = selectedVaccine || defaultVaccine;
 
   const navItems = [
     { to: '/', label: 'Dashboard' },
@@ -35,12 +39,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleCountrySelect = (code: string) => {
     if (onCountryChange) onCountryChange(code);
-    navigate(`/countries?code=${code}`);
+    navigate(`/countries?code=${encodeURIComponent(code)}`);
   };
 
   const handleVaccineSelect = (code: string) => {
     if (onVaccineChange) onVaccineChange(code);
-    navigate(`/vaccines?code=${code}`);
+    navigate(`/vaccines?code=${encodeURIComponent(code)}`);
   };
 
   return (
@@ -122,11 +126,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Country
             </label>
             <select
-              value={selectedCountry}
+              value={currentCountry}
               onChange={(e) => handleCountrySelect(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-xs font-medium text-slate-800 focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
             >
-              {DEMO_COUNTRIES.map((c) => (
+              {countries.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
                 </option>
@@ -139,11 +143,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Vaccine
             </label>
             <select
-              value={selectedVaccine}
+              value={currentVaccine}
               onChange={(e) => handleVaccineSelect(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-xs font-medium text-slate-800 focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
             >
-              {DEMO_VACCINES.map((v) => (
+              {vaccines.map((v) => (
                 <option key={v.code} value={v.code}>
                   {v.code}
                 </option>

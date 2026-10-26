@@ -14,12 +14,12 @@ import { ForecastResponse, CountryMetadata, VaccineMetadata } from '../types';
 import { MetricCard } from '../components/common/MetricCard';
 import { TrendBadge } from '../components/common/RiskBadge';
 import { CoverageTrendChart } from '../components/charts/CoverageTrendChart';
+import { useMetadata } from '../context/MetadataContext';
 
 export const ForecastPage: React.FC = () => {
-  const [countries, setCountries] = useState<CountryMetadata[]>(DEMO_COUNTRIES);
-  const [vaccines, setVaccines] = useState<VaccineMetadata[]>(DEMO_VACCINES);
-  const [selectedCountry, setSelectedCountry] = useState<string>('IND');
-  const [selectedVaccine, setSelectedVaccine] = useState<string>('MCV1');
+  const { countries, vaccines, horizons, defaultCountry, defaultVaccine } = useMetadata();
+  const [selectedCountry, setSelectedCountry] = useState<string>(defaultCountry || 'India');
+  const [selectedVaccine, setSelectedVaccine] = useState<string>(defaultVaccine || 'MCV1');
   const [selectedHorizon, setSelectedHorizon] = useState<number>(2028);
   const [showIntervals, setShowIntervals] = useState<boolean>(true);
   
@@ -28,20 +28,20 @@ export const ForecastPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchMetadata = async () => {
-      try {
-        const meta = await apiService.getMetadata();
-        if (meta.countries?.length) setCountries(meta.countries);
-        if (meta.vaccines?.length) setVaccines(meta.vaccines);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchMetadata();
-  }, []);
+    if (defaultCountry && (!selectedCountry || selectedCountry === 'IND')) {
+      setSelectedCountry(defaultCountry);
+    }
+  }, [defaultCountry]);
+
+  useEffect(() => {
+    if (defaultVaccine && (!selectedVaccine || selectedVaccine === 'MCV1')) {
+      setSelectedVaccine(defaultVaccine);
+    }
+  }, [defaultVaccine]);
 
   useEffect(() => {
     const fetchForecast = async () => {
+      if (!selectedCountry || !selectedVaccine) return;
       setLoading(true);
       setError(null);
       try {
@@ -63,7 +63,7 @@ export const ForecastPage: React.FC = () => {
   const handleDownloadCSV = () => {
     if (!forecastResult) return;
 
-    const headers = ['CountryCode', 'CountryName', 'VaccineCode', 'VaccineName', 'Year', 'Type', 'Coverage', 'Lower80_q10', 'Upper80_q90', 'Lower95', 'Upper95'];
+    const headers = ['CountryCode', 'CountryName', 'VaccineCode', 'VaccineName', 'Year', 'Type', 'Coverage', 'Lower80', 'Upper80', 'Lower95', 'Upper95'];
     const rows: (string | number)[][] = [];
 
     forecastResult.historical.forEach(h => {
@@ -108,7 +108,8 @@ export const ForecastPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const selectedVaccineObj = vaccines.find(v => v.code === selectedVaccine) || vaccines[0];
+  const selectedVaccineObj = vaccines.find(v => v.code === selectedVaccine) || vaccines[0] || DEMO_VACCINES[0];
+  const availableHorizons = horizons.length > 0 ? horizons : DEMO_AVAILABLE_HORIZONS;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -121,7 +122,7 @@ export const ForecastPage: React.FC = () => {
                 Temporal Fusion Transformer
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                Multi-Horizon Quantile Regression
+                Multi-Horizon Forecast
               </span>
             </div>
             <h2 className="text-xl font-extrabold text-[#07362f]">
@@ -187,7 +188,7 @@ export const ForecastPage: React.FC = () => {
               <span className="text-[11px] font-mono text-[#0d7a68] font-bold">Year: {selectedHorizon}</span>
             </div>
             <div className="flex items-center gap-1.5 bg-[#f0faf7] p-1 rounded-xl border border-[#d8ebe4]">
-              {DEMO_AVAILABLE_HORIZONS.map(year => (
+              {availableHorizons.map(year => (
                 <button
                   key={year}
                   onClick={() => setSelectedHorizon(year)}
@@ -213,7 +214,7 @@ export const ForecastPage: React.FC = () => {
               onChange={e => setShowIntervals(e.target.checked)}
               className="w-4 h-4 rounded border-[#d8ebe4] text-[#0d7a68] focus:ring-[#0d7a68]"
             />
-            <span>Render TFT Quantile Prediction Intervals (P10 to P90 Range)</span>
+            <span>Render backtest-calibrated prediction intervals</span>
           </label>
 
           <span className="text-slate-500 text-[11px]">
@@ -244,7 +245,7 @@ export const ForecastPage: React.FC = () => {
           <MetricCard
             title={`TFT FORECAST (${forecastResult.targetHorizonYear})`}
             value={`${forecastResult.predictedCoverage}%`}
-            subtitle="Median forecast point (P50)"
+            subtitle="Predicted coverage estimate"
             trend={{ value: `${forecastResult.absoluteChange > 0 ? `+${forecastResult.absoluteChange}` : forecastResult.absoluteChange}%`, positiveIsGood: true }}
           />
 
@@ -306,7 +307,7 @@ export const ForecastPage: React.FC = () => {
                 <Table className="w-4 h-4 text-[#0d7a68]" />
                 <span>Forecast Breakdown &amp; Prediction Intervals Table</span>
               </h3>
-              <p className="text-xs text-slate-500">Quantile bounds by horizon year</p>
+              <p className="text-xs text-slate-500">Backtest-calibrated prediction intervals by horizon year</p>
             </div>
             <button
               onClick={handleDownloadCSV}
@@ -322,9 +323,9 @@ export const ForecastPage: React.FC = () => {
               <thead className="bg-[#f0faf7] text-slate-500 uppercase tracking-wider text-[10px] border-b border-[#e1efe9]">
                 <tr>
                   <th className="py-2.5 px-3">Horizon Year</th>
-                  <th className="py-2.5 px-3">Predicted Coverage (P50)</th>
-                  <th className="py-2.5 px-3">80% Interval (P10 - P90)</th>
-                  <th className="py-2.5 px-3">95% Interval (P2.5 - P97.5)</th>
+                  <th className="py-2.5 px-3">Predicted Coverage</th>
+                  <th className="py-2.5 px-3">80% Interval (backtest-calibrated)</th>
+                  <th className="py-2.5 px-3">95% Interval (backtest-calibrated)</th>
                   <th className="py-2.5 px-3">Δ vs Observed ({forecastResult.latestYear})</th>
                   <th className="py-2.5 px-3">Trajectory</th>
                 </tr>

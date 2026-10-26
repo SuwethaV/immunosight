@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Syringe, 
   Search, 
@@ -8,9 +9,10 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { DEMO_VACCINES, DEMO_COUNTRIES } from '../data/demoData';
-import { apiService } from '../services/api';
-import { VaccineMetadata } from '../types';
+import { VaccineMetadata, VaccineCoverageItem } from '../types';
 import { MetricCard } from '../components/common/MetricCard';
+import { useMetadata } from '../context/MetadataContext';
+import { apiService } from '../services/api';
 import {
   ResponsiveContainer,
   BarChart,
@@ -24,37 +26,68 @@ import {
 } from 'recharts';
 
 export const VaccineAnalysisPage: React.FC = () => {
-  const [vaccines, setVaccines] = useState<VaccineMetadata[]>(DEMO_VACCINES);
-  const [selectedVaccineCode, setSelectedVaccineCode] = useState<string>('DTP3');
+  const { vaccines, defaultVaccine } = useMetadata();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlCode = searchParams.get('code');
+
+  const [selectedVaccineCode, setSelectedVaccineCode] = useState<string>(urlCode || defaultVaccine || 'MCV1');
   const [selectedYear, setSelectedYear] = useState<number>(2023);
   const [searchTerm, setSearchTerm] = useState('');
+  const [backendCoverageData, setBackendCoverageData] = useState<VaccineCoverageItem[]>([]);
 
   useEffect(() => {
-    const loadMetadata = async () => {
-      try {
-        const meta = await apiService.getMetadata();
-        if (meta.vaccines?.length) setVaccines(meta.vaccines);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    loadMetadata();
-  }, []);
+    const code = searchParams.get('code');
+    if (code && code !== selectedVaccineCode) {
+      setSelectedVaccineCode(code);
+    } else if (!code && defaultVaccine) {
+      setSelectedVaccineCode(defaultVaccine);
+    }
+  }, [searchParams, defaultVaccine]);
+
+  const handleVaccineChange = (code: string) => {
+    setSelectedVaccineCode(code);
+    setSearchParams({ code });
+  };
 
   const selectedVaccine = useMemo(() => {
-    return vaccines.find(v => v.code === selectedVaccineCode) || vaccines[0];
-  }, [vaccines, selectedVaccineCode]);
+    return vaccines.find(v => v.code.toLowerCase() === selectedVaccineCode.toLowerCase() || v.name.toLowerCase() === selectedVaccineCode.toLowerCase())
+      || vaccines.find(v => v.code.toLowerCase() === defaultVaccine.toLowerCase())
+      || vaccines[0]
+      || DEMO_VACCINES[0];
+  }, [vaccines, selectedVaccineCode, defaultVaccine]);
 
   const filteredVaccineList = useMemo(() => {
-    if (!searchTerm) return vaccines;
-    return vaccines.filter(v =>
+    const list = vaccines.length > 0 ? vaccines : DEMO_VACCINES;
+    if (!searchTerm) return list;
+    return list.filter(v =>
       v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.targetDisease.toLowerCase().includes(searchTerm.toLowerCase())
+      (v.targetDisease && v.targetDisease.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [vaccines, searchTerm]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCov = async () => {
+      if (!selectedVaccine.code) return;
+      try {
+        const res = await apiService.getVaccineCoverage(selectedVaccine.code, selectedYear);
+        if (isMounted && res.length > 0) {
+          setBackendCoverageData(res);
+        }
+      } catch (err) {
+        console.warn('[VaccineAnalysisPage] Failed to fetch vaccine coverage', err);
+      }
+    };
+    fetchCov();
+    return () => { isMounted = false; };
+  }, [selectedVaccine.code, selectedYear]);
+
   const countryCoverageData = useMemo(() => {
+    if (backendCoverageData.length > 0) {
+      return backendCoverageData;
+    }
+
     return DEMO_COUNTRIES.map(country => {
       let seed = 0;
       for (let i = 0; i < country.code.length; i++) seed += country.code.charCodeAt(i);
@@ -77,15 +110,18 @@ export const VaccineAnalysisPage: React.FC = () => {
         meetsTarget: rounded >= selectedVaccine.whoTarget
       };
     }).sort((a, b) => b.coverage - a.coverage);
-  }, [selectedVaccine, selectedYear]);
+  }, [backendCoverageData, selectedVaccine, selectedYear]);
 
   const averageCoverage = useMemo(() => {
+    if (!countryCoverageData.length) return 0;
     const total = countryCoverageData.reduce((acc, c) => acc + c.coverage, 0);
     return Math.round((total / countryCoverageData.length) * 10) / 10;
   }, [countryCoverageData]);
 
-  const targetAchievedCount = countryCoverageData.filter(c => c.meetsTarget).length;
-  const targetAchievedPercent = Math.round((targetAchievedCount / countryCoverageData.length) * 100);
+  const targetAchievedCount = countryCoverageData.filter(c => c.meetsTarget ?? (c.coverage >= selectedVaccine.whoTarget)).length;
+  const targetAchievedPercent = countryCoverageData.length 
+    ? Math.round((targetAchievedCount / countryCoverageData.length) * 100)
+    : 0;
 
   const topPerformers = countryCoverageData.slice(0, 5);
   const bottomPerformers = [...countryCoverageData].reverse().slice(0, 5);
@@ -107,6 +143,8 @@ export const VaccineAnalysisPage: React.FC = () => {
 
     return bands;
   }, [countryCoverageData]);
+
+  const evaluationYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030];
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -137,8 +175,8 @@ export const VaccineAnalysisPage: React.FC = () => {
 
             <select
               value={selectedVaccineCode}
-              onChange={e => setSelectedVaccineCode(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              onChange={e => handleVaccineChange(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[200px] truncate"
             >
               {filteredVaccineList.map(v => (
                 <option key={v.code} value={v.code}>
@@ -154,18 +192,18 @@ export const VaccineAnalysisPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-[#0d7a68]" />
             <span className="text-slate-500 font-semibold">Evaluation Year:</span>
-            <div className="flex items-center gap-1 bg-[#f0faf7] p-1 rounded-xl border border-[#d8ebe4]">
-              {[2015, 2018, 2020, 2021, 2022, 2023].map(year => (
+            <div className="flex flex-wrap items-center gap-1 bg-[#f0faf7] p-1 rounded-xl border border-[#d8ebe4]">
+              {evaluationYears.map(year => (
                 <button
                   key={year}
                   onClick={() => setSelectedYear(year)}
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
                     selectedYear === year
                       ? 'bg-[#0d7a68] text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {year}
+                  {year >= 2024 ? `${year} (forecast)` : `${year}`}
                 </button>
               ))}
             </div>
@@ -235,7 +273,7 @@ export const VaccineAnalysisPage: React.FC = () => {
 
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={countryCoverageData} margin={{ top: 20, right: 15, left: -10, bottom: 35 }}>
+            <BarChart data={countryCoverageData.slice(0, 25)} margin={{ top: 20, right: 15, left: -10, bottom: 35 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eef6f3" vertical={false} />
               <XAxis 
                 dataKey="code" 
@@ -261,7 +299,7 @@ export const VaccineAnalysisPage: React.FC = () => {
               />
               <ReferenceLine y={selectedVaccine.whoTarget} stroke="#0d7a68" strokeDasharray="4 4" />
               <Bar dataKey="coverage" radius={[4, 4, 0, 0]}>
-                {countryCoverageData.map((c, idx) => (
+                {countryCoverageData.slice(0, 25).map((c, idx) => (
                   <Cell 
                     key={`c-cell-${idx}`} 
                     fill={c.coverage >= selectedVaccine.whoTarget ? '#0d7a68' : c.coverage >= 70 ? '#f59e0b' : '#e11d48'} 

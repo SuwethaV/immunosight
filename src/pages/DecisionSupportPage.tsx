@@ -9,17 +9,30 @@ import {
   Info,
   RotateCcw
 } from 'lucide-react';
-import { DEMO_COUNTRIES, DEMO_VACCINES } from '../data/demoData';
 import { apiService } from '../services/api';
 import { DecisionSupportResult } from '../types';
 import { DEFAULT_THRESHOLDS } from '../config/thresholds.config';
 import { RiskBadge } from '../components/common/RiskBadge';
 import { MetricCard } from '../components/common/MetricCard';
+import { useMetadata } from '../context/MetadataContext';
 
 export const DecisionSupportPage: React.FC = () => {
-  const [selectedCountry, setSelectedCountry] = useState<string>('IND');
-  const [selectedVaccine, setSelectedVaccine] = useState<string>('MCV1');
+  const { countries, vaccines, defaultCountry, defaultVaccine } = useMetadata();
+  const [selectedCountry, setSelectedCountry] = useState<string>(defaultCountry || 'India');
+  const [selectedVaccine, setSelectedVaccine] = useState<string>(defaultVaccine || 'MCV1');
   const [decisionResult, setDecisionResult] = useState<DecisionSupportResult | null>(null);
+
+  useEffect(() => {
+    if (defaultCountry && (!selectedCountry || selectedCountry === 'IND')) {
+      setSelectedCountry(defaultCountry);
+    }
+  }, [defaultCountry]);
+
+  useEffect(() => {
+    if (defaultVaccine && (!selectedVaccine || selectedVaccine === 'MCV1')) {
+      setSelectedVaccine(defaultVaccine);
+    }
+  }, [defaultVaccine]);
 
   const [thresholdHigh] = useState<number>(DEFAULT_THRESHOLDS.highRiskCoverage);
   const [thresholdTarget] = useState<number>(DEFAULT_THRESHOLDS.targetCoverage);
@@ -27,6 +40,7 @@ export const DecisionSupportPage: React.FC = () => {
 
   useEffect(() => {
     const fetchDecision = async () => {
+      if (!selectedCountry || !selectedVaccine) return;
       try {
         const res = await apiService.getDecisionSupport({
           country: selectedCountry,
@@ -73,9 +87,9 @@ export const DecisionSupportPage: React.FC = () => {
             <select
               value={selectedCountry}
               onChange={e => setSelectedCountry(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[160px] truncate"
             >
-              {DEMO_COUNTRIES.map(c => (
+              {countries.map(c => (
                 <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
               ))}
             </select>
@@ -86,9 +100,9 @@ export const DecisionSupportPage: React.FC = () => {
             <select
               value={selectedVaccine}
               onChange={e => setSelectedVaccine(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-white border border-[#d8ebe4] text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0d7a68] shadow-sm cursor-pointer max-w-[160px] truncate"
             >
-              {DEMO_VACCINES.map(v => (
+              {vaccines.map(v => (
                 <option key={v.code} value={v.code}>{v.code}</option>
               ))}
             </select>

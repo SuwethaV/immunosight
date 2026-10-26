@@ -84,7 +84,7 @@ const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload, label })
 
         {data?.lower80 !== undefined && data?.upper80 !== undefined && (
           <div className="flex items-center justify-between gap-4 pt-1 border-t border-[#f0f7f4] text-[11px]">
-            <span className="text-slate-400">P10 – P90 Interval:</span>
+            <span className="text-slate-400">Backtest-Calibrated Interval:</span>
             <span className="font-semibold text-slate-700">
               [{data.lower80}% — {data.upper80}%]
             </span>
@@ -197,12 +197,12 @@ export const CoverageTrendChart: React.FC<CoverageTrendChartProps> = ({
               }}
             />
 
-            {/* P10 - P90 prediction interval band */}
+            {/* Backtest-calibrated prediction interval band */}
             {showIntervals && (
               <Area
                 type="monotone"
                 dataKey="intervalBand"
-                name="P10 to P90 Range"
+                name="Backtest-calibrated Range"
                 fill="url(#forecastBandLight)"
                 stroke="none"
                 connectNulls={true}
@@ -237,7 +237,7 @@ export const CoverageTrendChart: React.FC<CoverageTrendChartProps> = ({
       </div>
 
       <p className="text-[11px] text-slate-400 mt-2 font-medium">
-        History solid, forecast dashed, band shows P10 to P90 range
+        History solid, forecast dashed, band shows backtest-calibrated range
       </p>
     </div>
   );
